@@ -3,7 +3,8 @@
 A CLI tool that runs a process continuously (i.e. forever). Similar to [forever.js](https://github.com/foreverjs/forever).
 
 ```
-go run cli/forever.go --help
+$ forever --help
+
 usage: forever [<flags>] <cmd> [<args>...]
 
 Flags:
