@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/hayeah/forever"
+	"github.com/hayeah/go-forever"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 )
