@@ -1,3 +1,23 @@
+# Install
+
+```
+go install github.com/hayeah/go-forever/forever
+```
+
+# Example
+
+To run a process continuously:
+
+```
+forever --restartFile=restart.txt ruby my-server.rb arg1 arg2 arg3
+```
+
+To restart:
+
+```
+touch restart.txt
+```
+
 # Go Forever
 
 A CLI tool that runs a process continuously (i.e. forever). Similar to [forever.js](https://github.com/foreverjs/forever).
@@ -18,16 +38,3 @@ Args:
   [<args>]  arguments
 ```
 
-# Example
-
-To run a process continuously:
-
-```
-forever --restartFile=restart.txt ruby my-server.rb arg1 arg2 arg3
-```
-
-To restart:
-
-```
-touch restart.txt
-```
