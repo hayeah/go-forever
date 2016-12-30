@@ -101,7 +101,7 @@ type Supervisor struct {
 	Options *Options
 }
 
-func (s *Supervisor) HandleInterrupt() (ps *os.ProcessState, err error) {
+func (s *Supervisor) handleInterrupt() (ps *os.ProcessState, err error) {
 	signalC := make(chan os.Signal, 1)
 	signal.Notify(signalC, os.Interrupt)
 
@@ -111,7 +111,7 @@ func (s *Supervisor) HandleInterrupt() (ps *os.ProcessState, err error) {
 	}
 }
 
-func (s *Supervisor) WatchRestartFile() (err error) {
+func (s *Supervisor) watchRestartFile() (err error) {
 	rf := s.Options.RestartFile
 	if rf == "" {
 		return
@@ -162,14 +162,14 @@ func Start(name string, args []string, options *Options) {
 	go mp.RunForever()
 
 	go func() {
-		err := s.WatchRestartFile()
+		err := s.watchRestartFile()
 		if err != nil {
 			log.Fatal("Restart file", err)
 		}
 	}()
 
 	go func() {
-		s.HandleInterrupt()
+		s.handleInterrupt()
 		os.Exit(0)
 	}()
 
