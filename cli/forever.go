@@ -9,6 +9,7 @@ import (
 var (
 	minUptime     = kingpin.Flag("minUptime", "Minimum uptime for a script to not be considered 'spinning'").Duration()
 	spinSleepTime = kingpin.Flag("spinSleepTime", "Interval between restarts if a child is spinning").Duration()
+	restartFile   = kingpin.Flag("restartFile", "Drop a restart file. Touch the file to restart child.").String()
 	cmd           = kingpin.Arg("cmd", "command to run").Required().String()
 	args          = kingpin.Arg("args", "arguments").Strings()
 )
@@ -18,5 +19,7 @@ func main() {
 	kingpin.Parse()
 	// kingpin.
 	// log.Println(minUptime, spinSleepTime, *cmd, *args)
-	forever.Start(*cmd, *args)
+	forever.Start(*cmd, *args, &forever.Options{
+		RestartFile: *restartFile,
+	})
 }
