@@ -16,12 +16,13 @@ var (
 )
 
 func main() {
-	kingpin.Version("0.0.1")
+	kingpin.Version(forever.VERSION)
 	kingpin.Parse()
 
 	// kingpin.
 	// log.Println(minUptime, spinSleepTime, *cmd, *args)
 	forever.Start(*cmd, *args, &forever.Options{
-		RestartFile: *restartFile,
+		RestartFile:   *restartFile,
+		SpinSleepTime: *spinSleepTime,
 	})
 }

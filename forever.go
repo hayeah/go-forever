@@ -12,10 +12,14 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// VERSION is the semantic version string
+const VERSION = "0.0.2"
+
 // Options customizes a forever superisor
 type Options struct {
-	MinUptime   int
-	RestartFile string
+	// MinUptime     int
+	SpinSleepTime time.Duration
+	RestartFile   string
 }
 
 // Supervisor is the supervising process
@@ -80,7 +84,7 @@ func (s *Supervisor) Supervise(bin string, args []string) {
 			// reset the flag
 			s.restartRequested = false
 		} else {
-			interval := 3 * time.Second
+			interval := s.Options.SpinSleepTime
 			log.WithField("interval", interval).Info("Waiting to restart")
 			<-time.After(interval)
 		}
