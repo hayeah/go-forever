@@ -2,11 +2,12 @@
 package forever
 
 import (
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -17,88 +18,106 @@ type Options struct {
 	RestartFile string
 }
 
-// NewMonitoredProcess creates a new monitored process
-func NewMonitoredProcess(name string, args []string) (mp *MonitoredProcess) {
-	mp = &MonitoredProcess{
-		Name: name,
-		Args: args,
-	}
-
-	return
-}
-
-// MonitoredProcess is supervised by the forever process
-type MonitoredProcess struct {
-	Name string
-	Args []string
+// Supervisor is the supervising process
+type Supervisor struct {
+	Options *Options
 
 	// The currently running supervised process
-	cmd *exec.Cmd
+	child *exec.Cmd
+
+	// Child process id
+	childPid int
+
 	// Indicate that supervisor should stop
 	stopRestart bool
+
+	// Indicate that this is a requested restart
+	restartRequested bool
 }
 
-// RunForever starts a process and runs it continuously.
-func (mp *MonitoredProcess) RunForever() {
+// Supervise starts a process and runs it continuously.
+func (s *Supervisor) Supervise(bin string, args []string) {
+	// clog := log.WithFields(log.Fields{
+	// 	"bin": bin,
+	// })
+
+	log.WithFields(log.Fields{
+		"bin":  bin,
+		"args": args,
+	}).Info("Supervising child")
 	for {
-		cmd := exec.Command(mp.Name, mp.Args...)
-		mp.cmd = cmd
-
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		// cmdGroup.Add(1)
-		err := cmd.Start()
-		if err != nil {
-			log.Println("cmd failed to start:", cmd)
-		} else {
-			log.Printf("Process running: %d\n", cmd.Process.Pid)
-			err = cmd.Wait()
-			if err != nil {
-				log.Printf("Wait(%d): %s", cmd.Process.Pid, err)
-				// panic(err)
-			}
-			// cmdGroup.Done()
-		}
-
-		if mp.stopRestart {
+		if s.stopRestart {
 			return
 		}
 
-		<-time.After(3 * time.Second)
-		log.Println("Restarting process")
+		child := exec.Command(bin, args...)
+		s.child = child
+
+		child.Stdout = os.Stdout
+		child.Stderr = os.Stderr
+
+		err := child.Start()
+		if err != nil {
+			log.WithField("err", err).Info("Failed to start child")
+		} else {
+			pid := child.Process.Pid
+			s.childPid = pid
+			log.WithField("pid", pid).Info("Child running")
+			err = child.Wait()
+			log.WithFields(log.Fields{
+				"pid": pid,
+				"err": err,
+			}).Info("Child terminated")
+			s.childPid = 0
+		}
+
+		if s.stopRestart {
+			return
+		}
+
+		// If is user requested restart, don't wait for spin sleep time
+		if s.restartRequested {
+			// reset the flag
+			s.restartRequested = false
+		} else {
+			interval := 3 * time.Second
+			log.WithField("interval", interval).Info("Waiting to restart")
+			<-time.After(interval)
+		}
 	}
 }
 
 // Restart sends SIGINT to supervised process, wait for exit, then spin up a process.
-func (mp *MonitoredProcess) Restart() error {
-	return mp.sendInterrupt()
+func (s *Supervisor) Restart() error {
+	s.restartRequested = true
+	return s.interruptChild()
 }
 
 // Stop kills the supervised process, causing RunForever to end
-func (mp *MonitoredProcess) Stop() (ps *os.ProcessState, err error) {
-	mp.stopRestart = true
+func (s *Supervisor) Stop() (ps *os.ProcessState, err error) {
+	log.Info("Stopping superisor")
 
-	err = mp.sendInterrupt()
+	s.stopRestart = true
+
+	err = s.interruptChild()
 	if err != nil {
 		return
 	}
 
-	return mp.cmd.Process.Wait()
+	return s.child.Process.Wait()
 }
 
-func (mp *MonitoredProcess) sendInterrupt() error {
-	return mp.cmd.Process.Signal(os.Interrupt)
-}
+func (s *Supervisor) interruptChild() error {
+	if s.childPid == 0 {
+		log.Info("No running child to interrupt")
+		return nil
+	}
 
-// // Restart sends SIGHUP to supervised process.
-// func (mp *monitoredProcess) SoftRestart() error {
-// }
+	log.WithFields(log.Fields{
+		"pid": s.childPid,
+	}).Info("Interrupt child")
 
-// Supervisor is the supervising process
-type Supervisor struct {
-	Child   *MonitoredProcess
-	Options *Options
+	return s.child.Process.Signal(os.Interrupt)
 }
 
 func (s *Supervisor) handleInterrupt() (ps *os.ProcessState, err error) {
@@ -107,22 +126,18 @@ func (s *Supervisor) handleInterrupt() (ps *os.ProcessState, err error) {
 
 	select {
 	case <-signalC:
-		return s.Child.Stop()
+		return s.Stop()
 	}
 }
 
 func (s *Supervisor) watchRestartFile() (err error) {
 	rf := s.Options.RestartFile
-	if rf == "" {
-		return
-	}
 
 	_, err = os.Stat(rf)
 	if os.IsNotExist(err) {
 		f, err := os.Create(rf)
 		if err != nil {
 			return err
-			// log.Fatal("Failed to create restart file", err)
 		}
 		f.Close()
 	}
@@ -134,13 +149,12 @@ func (s *Supervisor) watchRestartFile() (err error) {
 	restartWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return
-		// log.Fatal("watch restart file:", err)
 	}
 	restartWatcher.Add(rf)
 
 	for event := range restartWatcher.Events {
 		if event.Op == fsnotify.Chmod {
-			err := s.Child.Restart()
+			err := s.Restart()
 			if err != nil {
 				log.Println("Failed to signal process to restart:", err)
 			}
@@ -151,15 +165,10 @@ func (s *Supervisor) watchRestartFile() (err error) {
 }
 
 // Start a process that runs continuously
-func Start(name string, args []string, options *Options) {
-	mp := NewMonitoredProcess(name, args)
-
+func Start(bin string, args []string, options *Options) {
 	s := &Supervisor{
-		Child:   mp,
 		Options: options,
 	}
-
-	go mp.RunForever()
 
 	go func() {
 		err := s.watchRestartFile()
@@ -169,10 +178,15 @@ func Start(name string, args []string, options *Options) {
 	}()
 
 	go func() {
+		// This handler can cause forever loop to stop
 		s.handleInterrupt()
-		os.Exit(0)
 	}()
 
-	var waitForever chan interface{}
-	waitForever <- struct{}{}
+	// forever loop
+	s.Supervise(bin, args)
+
+	os.Exit(0)
+
+	// var waitForever chan interface{}
+	// waitForever <- struct{}{}
 }
