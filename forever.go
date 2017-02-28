@@ -45,14 +45,24 @@ func (s *Supervisor) Supervise(bin string, args []string) {
 	// 	"bin": bin,
 	// })
 
-	log.WithFields(log.Fields{
-		"bin":  bin,
-		"args": args,
-	}).Info("Supervising child")
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	env := os.Environ()
+
 	for {
 		if s.stopRestart {
 			return
 		}
+
+		log.WithFields(log.Fields{
+			"bin":  bin,
+			"args": args,
+			"cwd":  cwd,
+			"env":  env,
+		}).Info("Starting child")
 
 		child := exec.Command(bin, args...)
 		s.child = child
