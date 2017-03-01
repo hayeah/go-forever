@@ -148,16 +148,17 @@ func (s *Supervisor) watchRestartFile() (err error) {
 	rf := s.Options.RestartFile
 
 	_, err = os.Stat(rf)
-	if os.IsNotExist(err) {
+
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return
+		}
+
 		f, err := os.Create(rf)
 		if err != nil {
 			return err
 		}
 		f.Close()
-	}
-
-	if err != nil {
-		return
 	}
 
 	restartWatcher, err := fsnotify.NewWatcher()
@@ -187,7 +188,7 @@ func Start(bin string, args []string, options *Options) {
 	go func() {
 		err := s.watchRestartFile()
 		if err != nil {
-			log.Fatal("Restart file", err)
+			log.Fatal("watch restart:", err)
 		}
 	}()
 
